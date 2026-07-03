@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang='es'>
+
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <meta name="theme-color" content="#141414">
+    <title>My Places</title>
+    <!-- Favicon -->
+    <link rel="icon" href="icons/icon-192.png" type="image/png">
+    <!-- CSS, manifest, VUE, leaflet -->
+    <link rel='stylesheet' href='css/styles.css'>
+    <link rel='manifest' href='manifest.json'>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+
+<body>
+    <main>
+        <div id="app">
+            <!-- NAVBAR -->
+            <nav v-if="pantallaActual !== 'bienvenida'" class="navbar">
+
+                <button @click="irA('home')" class="nav-btn" :class="{ activo: pantallaActual === 'home' }">
+                    <img src="assets/iconos-nav/inicio.svg" alt="inicio">
+                </button>
+
+                <button @click="irA('formulario')" class="nav-btn nav-btn-plus">
+                    <img src="assets/iconos-nav/mas.svg" alt="agregar">
+                </button>
+
+                <button @click="irA('mapa')" class="nav-btn" :class="{ activo: pantallaActual === 'mapa' }">
+                    <img src="assets/iconos-nav/mapa.svg" alt="mapa">
+                </button>
+
+            </nav>
+
+            <!-- MODAL OFFLINE -->
+            <div v-if="offline && mostrarModalOffline" class="modal-offline">
+                <div class="modal-contenido">
+                    <img src="assets/iconos-otros/offline.svg" alt="sin conexión">
+                    <h3>Sin conexión</h3>
+                    <p>Podés usar My Places con normalidad.</p>
+                    <button @click="mostrarModalOffline = false" class="btn-continuar">Continuar sin conexión</button>
+                </div>
+            </div>
+
+            <!-- MODAL ONLINE -->
+            <div v-if="mostrarModalOnline" class="modal-online">
+                <div class="modal-online-contenido">
+                    <p>¡Estás online de nuevo!</p>
+                </div>
+            </div>
+
+            <!-- PANTALLA: BIENVENIDA -->
+            <div v-if="pantallaActual === 'bienvenida'" class="pantalla-bienvenida">
+                <img src="icons/icon-512.png" alt="My Places" class="logo-bienvenida">
+                <h1>¡Bienvenido a My Places!</h1>
+                <p>Por favor, ingresa tu nombre para continuar.</p>
+                <input v-model="nombreUsuario" placeholder="Tu nombre">
+                <button @click="guardarNombre">Continuar</button>
+            </div>
+
+            <!-- PANTALLA: HOME -->
+            <div v-else-if="pantallaActual === 'home'" class="pantalla-home">
+
+                <!-- chip offline -->
+                <span v-if="offline" class="chip-offline">
+                    <img src="assets/iconos-otros/offline.svg" alt="offline"> Offline
+                </span>
+
+                <!-- header -->
+                <header>
+                    <h1>¡Hola, {{ nombreUsuario }}!</h1>
+                    <p class="subtitulo">Tus lugares favoritos, siempre organizados</p>
+                </header>
+
+                <!-- categorías -->
+                <div v-if="lugares.length > 0" class="grid-categorias">
+                    <div class="card-categoria" 
+                        v-for="categoria in categorias.filter(c => lugares.some(l => l.categoria === c.nombre))" 
+                        :key="categoria.id"
+                        :style="{ backgroundColor: categoria.color }" 
+                        @click="seleccionarCategoria(categoria)">
+                        <img :src="categoria.icono" class="icono-categoria">
+                        <h3>{{ categoria.nombre }}</h3>
+                        <p>{{ lugares.filter(l => l.categoria === categoria.nombre).length }} lugares</p>
+                    </div>
+                </div>
+
+                <!-- estado vacío (no hay lugares guardados) -->
+                <div v-else class="estado-vacio">
+                    <img src="assets/iconos-otros/vacio.svg" alt="sin lugares">
+                    <p>¡Agregá tu primer lugar!</p>
+                </div>
+
+            </div>
+
+            <!-- PANTALLA: FORMULARIO -->
+            <div v-else-if="pantallaActual === 'formulario'" class="pantalla-formulario">
+
+                <!-- HEADER -->
+                <header class="header-pantalla">
+                    <button @click="irA('home')" class="btn-volver">
+                        <img src="assets/iconos-otros/atras.svg" alt="volver">
+                    </button>
+                    <h2>{{ formulario.id ? 'Editar lugar' : 'Nuevo lugar' }}</h2>
+                </header>
+
+                <!-- FORMULARIO -->
+                <form @submit.prevent="guardarLugar">
+
+                    <label>Nombre</label>
+                    <input v-model="formulario.nombre" placeholder="Ej: Café Paulin" required>
+
+                    <label>Categoría</label>
+                    <input v-model="formulario.categoria" list="lista-categorias" placeholder="Ej: Cafeterías" required>
+                    <datalist id="lista-categorias">
+                        <option v-for="cat in categorias" :key="cat.id" :value="cat.nombre">
+                    </datalist>
+
+                    <label>Color de categoría</label>
+                    <!-- Si es categoría predefinida → muestra el color fijo -->
+                    <div v-if="iconosCategorias[formulario.categoria.toLowerCase()]" class="color-fijo">
+                        <span class="circulo-color" :style="{ backgroundColor: obtenerColorCategoria(formulario.categoria) }"></span>
+                        <span class="color-fijo-texto">Color predeterminado</span>
+                    </div>
+
+                    <!-- Si es categoría nueva → muestra la paleta -->
+                    <div v-else class="paleta-colores">
+                        <span
+                            v-for="color in ['#D0D0D0','#DFC4D9','#B1D0DC','#B7B09D','#A5C99D','#C5A88D','#BEB1C9','#C18E8E','#C2C7A3']"
+                            :key="color"
+                            :style="{ backgroundColor: color }"
+                            class="circulo-color"
+                            :class="{ seleccionado: formulario.colorCategoria === color }"
+                            @click="formulario.colorCategoria = color">
+                        </span>
+                    </div>
+
+                    <label>Descripción</label>
+                    <textarea v-model="formulario.descripcion" placeholder="¿Qué te gustó de este lugar?"></textarea>
+
+                    <label>Estado</label>
+                    <select v-model="formulario.estado" required>
+                        <option value="" disabled>Seleccionar...</option>
+                        <option value="visitado">Visitado</option>
+                        <option value="quiero-visitar">Quiero visitar</option>
+                    </select>
+
+                    <label>Ubicación</label>
+                    <input v-model="formulario.ubicacion.texto" placeholder="Ej: Palermo, Buenos Aires">
+                    <button type="button" @click="capturarUbicacion" class="btn-ubicacion">
+                        <img src="assets/iconos-otros/ubi.svg" alt="ubicación">
+                        Usar mi ubicación actual
+                    </button>
+
+                    <button type="submit" class="btn-guardar">
+                        {{ formulario.id ? 'Guardar cambios' : 'Agregar lugar' }}
+                    </button>
+
+                </form>
+            </div>
+
+            <!-- PANTALLA: LUGARES -->
+            <div v-else-if="pantallaActual === 'lugares'" class="pantalla-lugares">
+
+                <!-- HEADER -->
+                <header class="header-pantalla">
+                    <button @click="irA('home')" class="btn-volver">
+                        <img src="assets/iconos-otros/atras.svg" alt="volver">
+                    </button>
+                    <h2>{{ categoriaSeleccionada.nombre }}</h2>
+                </header>
+
+                <!-- BARRA DE BÚSQUEDA -->
+                <div v-if="lugaresFiltrados.length > 0 || busquedaLugar" class="barra-busqueda">
+                    <img src="assets/iconos-otros/buscar.svg" alt="buscar" class="icono-busqueda">
+                    <input
+                        v-model="busquedaLugar"
+                        type="text"
+                        placeholder="Buscar lugar...">
+                    <button v-if="busquedaLugar" @click="busquedaLugar = ''" class="btn-limpiar-busqueda">✕</button>
+                </div>
+
+                <!-- LISTA DE LUGARES -->
+                <div v-if="lugaresBuscados.length > 0" class="lista-lugares">
+                    <div class="card-lugar" v-for="lugar in lugaresBuscados" :key="lugar.id"
+                        @click="verDetalle(lugar)">
+
+                        <div class="card-lugar-info">
+                            <h3>{{ lugar.nombre }}</h3>
+                            <p>{{ lugar.descripcion }}</p>
+                            <span class="estado-badge">{{ lugar.estado }}</span>
+                        </div>
+
+                        <!-- MENÚ ... -->
+                        <div class="menu-opciones">
+                            <button @click.stop="editarLugar(lugar)" class="btn-opcion">
+                                <img src="assets/iconos-otros/editar.svg" alt="editar">
+                            </button>
+                            <button @click.stop="eliminarLugar(lugar.id)" class="btn-opcion">
+                                <img src="assets/iconos-otros/eliminar.svg" alt="eliminar">
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- ESTADO VACÍO (sin lugares en la categoría) -->
+                <div v-else-if="!busquedaLugar" class="estado-vacio">
+                    <img src="assets/iconos-otros/vacio.svg" alt="sin lugares">
+                    <p>No hay lugares en esta categoría todavía</p>
+                </div>
+
+                <!-- ESTADO VACÍO (búsqueda sin resultados) -->
+                <div v-else class="estado-vacio">
+                    <img src="assets/iconos-otros/vacio.svg" alt="sin resultados">
+                    <p>No encontramos lugares para "{{ busquedaLugar }}"</p>
+                </div>
+
+                <!-- ESTADO VACÍO -->
+                <div v-else class="estado-vacio">
+                    <img src="assets/iconos-otros/vacio.svg" alt="sin lugares">
+                    <p>No hay lugares en esta categoría todavía</p>
+                </div>
+
+            </div>
+
+            <!-- PANTALLA: DETALLE -->
+            <div v-else-if="pantallaActual === 'detalle'" class="pantalla-detalle">
+
+                <!-- HEADER -->
+                <header class="header-pantalla">
+                    <button @click="irA('lugares')" class="btn-volver">
+                        <img src="assets/iconos-otros/atras.svg" alt="volver">
+                    </button>
+                    <h2>{{ detallesLugar.nombre }}</h2>
+                </header>
+
+                <!-- INFO DEL LUGAR -->
+                <div class="detalle-contenido">
+
+                    <div class="detalle-categoria" :style="{ backgroundColor: obtenerColorCategoria(detallesLugar.categoria) }">
+                        <img :src="obtenerIconoCategoria(detallesLugar.categoria)" alt="categoría" class="detalle-categoria-icono">
+                        <span class="detalle-categoria-texto">{{ detallesLugar.categoria }}</span>
+                    </div>
+
+                    <p class="detalle-descripcion">{{ detallesLugar.descripcion }}</p>
+
+                    <div class="detalle-info">
+                        <p><img src="assets/iconos-otros/estado.svg" alt="estado"> {{ detallesLugar.estado }}</p>
+                        <p><img src="assets/iconos-otros/fecha.svg" alt="fecha"> {{ detallesLugar.fecha }}</p>
+                        <p v-if="detallesLugar.ubicacion.texto">
+                            <img src="assets/iconos-otros/ubi.svg" alt="ubicación">
+                            {{ detallesLugar.ubicacion.texto }}
+                        </p>
+                    </div>
+
+                    <!-- BOTÓN ABRIR EN MAPS -->
+                    <a v-if="detallesLugar.ubicacion.lat"
+                        :href="`https://www.google.com/maps?q=${detallesLugar.ubicacion.lat},${detallesLugar.ubicacion.lon}`"
+                        target="_blank" class="btn-maps">
+                        <img src="assets/iconos-otros/maps.svg" alt="maps">
+                        Abrir en Google Maps
+                    </a>
+
+                    <!-- ACCIONES -->
+                    <div class="detalle-acciones">
+                        <button @click="editarLugar(detallesLugar)" class="btn-editar">
+                            <img src="assets/iconos-otros/editar.svg" alt="editar">
+                            Editar
+                        </button>
+                        <button @click="eliminarLugar(detallesLugar.id)" class="btn-eliminar">
+                            <img src="assets/iconos-otros/eliminar.svg" alt="eliminar">
+                            Eliminar
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- PANTALLA: MAPA -->
+            <div v-else-if="pantallaActual === 'mapa'" class="pantalla-mapa">
+                <header class="header-pantalla">
+                    <h2>Mis lugares</h2>
+                </header>
+                <p class="subtitulo-mapa">Aquí verás los lugares que guardaste usando tu ubicación actual</p>
+                <div id="mapa"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <script src="js/storage.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
